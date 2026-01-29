@@ -16,6 +16,10 @@ class AppState {
     var completionManager = CompletionManager()
     var focusedPane: FocusedPane = .terminal
 
+    // Preview state
+    var previewItem: FileItem?
+    var previewGitStatus: FileItem.GitStatus = .none
+
     init() {
         // Create first tab automatically
         let firstTabId = createTab()
@@ -128,5 +132,19 @@ class AppState {
 
     func focusTerminal() {
         focusedPane = .terminal
+    }
+
+    // MARK: - Preview
+
+    func showPreview(for item: FileItem, gitStatus: FileItem.GitStatus) {
+        previewItem = item
+        previewGitStatus = gitStatus
+        previewVisible = true
+    }
+
+    func dismissPreview() {
+        previewVisible = false
+        previewItem = nil
+        previewGitStatus = .none
     }
 }

@@ -331,6 +331,12 @@ struct SidebarView: View {
     }
 
     private func handleFileAction(_ action: FileAction, for item: FileItem) {
+        // Handle preview action specially
+        if action.isPreviewAction {
+            appState.showPreview(for: item, gitStatus: item.gitStatus)
+            return
+        }
+
         guard let command = action.command(for: item, in: fileService.currentDirectory) else {
             // Some actions like copyPath handle themselves
             return

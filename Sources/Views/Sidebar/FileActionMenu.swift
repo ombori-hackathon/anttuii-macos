@@ -12,6 +12,7 @@ enum FileAction: String, CaseIterable, Identifiable {
     case open = "Open"
     case copyPath = "Copy Path"
     case edit = "Edit"
+    case preview = "Preview"
 
     var id: String { rawValue }
 
@@ -26,6 +27,7 @@ enum FileAction: String, CaseIterable, Identifiable {
         case .open: return "op"
         case .copyPath: return "cp"
         case .edit: return "ed"
+        case .preview: return "pv"
         }
     }
 
@@ -40,6 +42,7 @@ enum FileAction: String, CaseIterable, Identifiable {
         case .open: return "o"
         case .copyPath: return "y"
         case .edit: return "e"
+        case .preview: return "p"
         }
     }
 
@@ -50,6 +53,7 @@ enum FileAction: String, CaseIterable, Identifiable {
         case .copy, .move, .rename: return .cyan
         case .open, .edit: return .yellow
         case .copyPath: return .white
+        case .preview: return .purple
         }
     }
 
@@ -84,7 +88,15 @@ enum FileAction: String, CaseIterable, Identifiable {
             return nil
         case .edit:
             return "$EDITOR \(escapedPath)"
+        case .preview:
+            // Preview is handled specially - returns nil to signal no terminal command
+            return nil
         }
+    }
+
+    /// Whether this action opens a preview overlay instead of a terminal command
+    var isPreviewAction: Bool {
+        self == .preview
     }
 
     private func shellEscape(_ path: String) -> String {
@@ -112,10 +124,16 @@ struct FileActionMenu: View {
     @Binding var isVisible: Bool
     @Binding var selectedAction: Int
     let onAction: (FileAction) -> Void
+    @FocusState private var isFocused: Bool
 
-    private let actions: [FileAction] = [
-        .open, .edit, .copy, .move, .rename, .delete, .mkdir, .touch, .copyPath
-    ]
+    private var actions: [FileAction] {
+        // Only show preview for files, not directories
+        if item.isDirectory {
+            return [.open, .edit, .copy, .move, .rename, .delete, .mkdir, .touch, .copyPath]
+        } else {
+            return [.preview, .open, .edit, .copy, .move, .rename, .delete, .mkdir, .touch, .copyPath]
+        }
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -195,6 +213,9 @@ struct FileActionMenu: View {
         }
         .font(.system(size: 13, design: .monospaced))
         .background(tuiMenuBg)
+        .focusable()
+        .focused($isFocused)
+        .onAppear { isFocused = true }
         .onKeyPress(.upArrow) {
             moveSelection(by: -1)
             return .handled
@@ -212,6 +233,7 @@ struct FileActionMenu: View {
             return .handled
         }
         // Shortcut keys
+        .onKeyPress("p") { executeAction(.preview); return .handled }
         .onKeyPress("o") { executeAction(.open); return .handled }
         .onKeyPress("e") { executeAction(.edit); return .handled }
         .onKeyPress("c") { executeAction(.copy); return .handled }

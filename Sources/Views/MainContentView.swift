@@ -87,6 +87,18 @@ struct TerminalContent: View {
                     Spacer()
                 }
             }
+
+            // File preview overlay
+            if appState.previewVisible, let previewItem = appState.previewItem {
+                FilePreviewOverlay(
+                    item: previewItem,
+                    gitStatus: appState.previewGitStatus,
+                    onDismiss: {
+                        appState.dismissPreview()
+                    }
+                )
+                .padding(20)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear {
