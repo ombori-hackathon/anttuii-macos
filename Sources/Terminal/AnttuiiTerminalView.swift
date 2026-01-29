@@ -7,6 +7,7 @@ extension Notification.Name {
     static let terminalEnterPressed = Notification.Name("terminalEnterPressed")
     static let terminalEscapePressed = Notification.Name("terminalEscapePressed")
     static let terminalInsertCompletion = Notification.Name("terminalInsertCompletion")
+    static let terminalInsertCommand = Notification.Name("terminalInsertCommand")
 }
 
 class AnttuiiTerminalView: LocalProcessTerminalView {
@@ -70,6 +71,29 @@ class AnttuiiTerminalView: LocalProcessTerminalView {
             name: .terminalInsertCompletion,
             object: nil
         )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleInsertCommand(_:)),
+            name: .terminalInsertCommand,
+            object: nil
+        )
+    }
+
+    @objc private func handleInsertCommand(_ notification: Notification) {
+        guard let userInfo = notification.userInfo,
+              let command = userInfo["command"] as? String else {
+            return
+        }
+
+        // Clear current input line first (send Ctrl+U to clear)
+        send(txt: "\u{15}")
+
+        // Insert the command
+        send(txt: command)
+
+        // Update our tracked input
+        currentInput = command
+        onInputChanged?(currentInput)
     }
 
     @objc private func handleInsertCompletion(_ notification: Notification) {

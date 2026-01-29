@@ -16,18 +16,48 @@ struct SidebarView: View {
     @State private var selectedIndex: Int = 0
     @FocusState private var isFocused: Bool
 
+    // Action menu state
+    @State private var showActionMenu: Bool = false
+    @State private var actionMenuSelectedIndex: Int = 0
+
     private var isActive: Bool {
         appState.focusedPane == .sidebar
     }
 
+    private var selectedItem: FileItem? {
+        let itemIndex = selectedIndex - (hasParent ? 1 : 0)
+        guard itemIndex >= 0 && itemIndex < fileService.rootItems.count else { return nil }
+        return fileService.rootItems[itemIndex]
+    }
+
     var body: some View {
-        VStack(spacing: 0) {
-            headerSection
-            TUIBoxSeparator()
-            fileListSection
-            TUIBoxSeparator()
-            statusSection
-            TUIBoxBottom()
+        ZStack {
+            VStack(spacing: 0) {
+                headerSection
+                TUIBoxSeparator()
+                fileListSection
+                TUIBoxSeparator()
+                statusSection
+                TUIBoxBottom()
+            }
+
+            // Action menu overlay
+            if showActionMenu, let item = selectedItem {
+                VStack {
+                    Spacer()
+                    FileActionMenu(
+                        item: item,
+                        directory: fileService.currentDirectory,
+                        isVisible: $showActionMenu,
+                        selectedAction: $actionMenuSelectedIndex,
+                        onAction: { action in
+                            handleFileAction(action, for: item)
+                        }
+                    )
+                    .frame(maxWidth: 280)
+                    .padding(.bottom, 40)
+                }
+            }
         }
         .font(.system(size: tuiFontSize, design: .monospaced))
         .background(tuiBgColor)
@@ -46,11 +76,43 @@ struct SidebarView: View {
         .onTapGesture {
             appState.focusedPane = .sidebar
         }
-        .onKeyPress(.upArrow) { moveSelection(by: -1); return .handled }
-        .onKeyPress(.downArrow) { moveSelection(by: 1); return .handled }
-        .onKeyPress(.return) { activateSelected(); return .handled }
-        .onKeyPress("g") { selectedIndex = 0; return .handled }
-        .onKeyPress("r") { fileService.refreshGitStatus(); return .handled }
+        .onKeyPress(.upArrow) {
+            guard !showActionMenu else { return .ignored }
+            moveSelection(by: -1)
+            return .handled
+        }
+        .onKeyPress(.downArrow) {
+            guard !showActionMenu else { return .ignored }
+            moveSelection(by: 1)
+            return .handled
+        }
+        .onKeyPress(.return) {
+            guard !showActionMenu else { return .ignored }
+            activateSelected()
+            return .handled
+        }
+        .onKeyPress("a") {
+            guard !showActionMenu else { return .ignored }
+            showActionMenuForSelected()
+            return .handled
+        }
+        .onKeyPress("g") {
+            guard !showActionMenu else { return .ignored }
+            selectedIndex = 0
+            return .handled
+        }
+        .onKeyPress("r") {
+            guard !showActionMenu else { return .ignored }
+            fileService.refreshGitStatus()
+            return .handled
+        }
+        .onKeyPress(.escape) {
+            if showActionMenu {
+                showActionMenu = false
+                return .handled
+            }
+            return .ignored
+        }
     }
 
     // MARK: - View Components
@@ -156,8 +218,14 @@ struct SidebarView: View {
             Text(" items")
                 .foregroundColor(tuiDimColor)
             Spacer(minLength: 0)
+            Text("a")
+                .foregroundColor(.cyan)
+            Text(":actions ")
+                .foregroundColor(tuiDimColor)
             if fileService.isGitRepo {
-                Text("r:refresh ")
+                Text("r")
+                    .foregroundColor(.cyan)
+                Text(":refresh ")
                     .foregroundColor(tuiDimColor)
             }
             Text("│")
@@ -251,6 +319,32 @@ struct SidebarView: View {
         case "zip", "tar", "gz", "exe", "app": return .red
         default: return .white
         }
+    }
+
+    // MARK: - Action Menu
+
+    private func showActionMenuForSelected() {
+        // Only show menu for actual files/directories, not parent (..)
+        guard selectedItem != nil else { return }
+        actionMenuSelectedIndex = 0
+        showActionMenu = true
+    }
+
+    private func handleFileAction(_ action: FileAction, for item: FileItem) {
+        guard let command = action.command(for: item, in: fileService.currentDirectory) else {
+            // Some actions like copyPath handle themselves
+            return
+        }
+
+        // Send command to terminal via notification
+        NotificationCenter.default.post(
+            name: .terminalInsertCommand,
+            object: nil,
+            userInfo: ["command": command]
+        )
+
+        // Switch focus to terminal so user can complete the command
+        appState.focusedPane = .terminal
     }
 }
 
