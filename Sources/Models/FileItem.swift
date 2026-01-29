@@ -74,10 +74,36 @@ class FileSystemService: ObservableObject {
     private let fileManager = FileManager.default
     private var gitStatusCache: [String: FileItem.GitStatus] = [:]
 
+    // File system monitoring
+    private var directoryMonitor: DirectoryMonitor?
+
     func loadDirectory(_ url: URL) {
         currentDirectory = url
         refreshGitStatus()
         rootItems = loadContents(of: url)
+        startMonitoring(url)
+    }
+
+    // MARK: - Directory Monitoring
+
+    private func startMonitoring(_ url: URL) {
+        directoryMonitor?.stopMonitoring()
+        directoryMonitor = nil
+
+        directoryMonitor = DirectoryMonitor(url: url) { [weak self] in
+            Task { @MainActor [weak self] in
+                guard let self = self else { return }
+                // Reload contents when directory changes
+                self.refreshGitStatus()
+                self.rootItems = self.loadContents(of: self.currentDirectory)
+            }
+        }
+        directoryMonitor?.startMonitoring()
+    }
+
+    func stopMonitoring() {
+        directoryMonitor?.stopMonitoring()
+        directoryMonitor = nil
     }
 
     func loadContents(of url: URL) -> [FileItem] {
@@ -258,5 +284,78 @@ class FileSystemService: ObservableObject {
 
     private func gitStatusForPath(_ path: String) -> FileItem.GitStatus? {
         return gitStatusCache[path]
+    }
+}
+
+// MARK: - Directory Monitor
+
+/// Monitors a directory for file system changes using DispatchSource
+class DirectoryMonitor {
+    private let url: URL
+    private let onChange: () -> Void
+    private var source: DispatchSourceFileSystemObject?
+    private var fileDescriptor: Int32 = -1
+    private let queue = DispatchQueue(label: "com.anttuii.directorymonitor", qos: .utility)
+
+    // Debounce to avoid rapid-fire updates
+    private var debounceWorkItem: DispatchWorkItem?
+    private let debounceInterval: TimeInterval = 0.3
+
+    init(url: URL, onChange: @escaping () -> Void) {
+        self.url = url
+        self.onChange = onChange
+    }
+
+    deinit {
+        stopMonitoring()
+    }
+
+    func startMonitoring() {
+        guard source == nil else { return }
+
+        fileDescriptor = open(url.path, O_EVTONLY)
+        guard fileDescriptor >= 0 else {
+            return
+        }
+
+        source = DispatchSource.makeFileSystemObjectSource(
+            fileDescriptor: fileDescriptor,
+            eventMask: [.write, .delete, .rename, .extend],
+            queue: queue
+        )
+
+        source?.setEventHandler { [weak self] in
+            self?.handleChange()
+        }
+
+        source?.setCancelHandler { [weak self] in
+            guard let self = self else { return }
+            if self.fileDescriptor >= 0 {
+                close(self.fileDescriptor)
+                self.fileDescriptor = -1
+            }
+        }
+
+        source?.resume()
+    }
+
+    func stopMonitoring() {
+        debounceWorkItem?.cancel()
+        debounceWorkItem = nil
+
+        source?.cancel()
+        source = nil
+    }
+
+    private func handleChange() {
+        // Debounce rapid changes
+        debounceWorkItem?.cancel()
+
+        let workItem = DispatchWorkItem { [weak self] in
+            self?.onChange()
+        }
+
+        debounceWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + debounceInterval, execute: workItem)
     }
 }

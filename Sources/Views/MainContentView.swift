@@ -84,20 +84,42 @@ struct TerminalContent: View {
                 }
             )
 
-            // Completion overlay - top center
+            // Completion overlay - positioned above the command line
             if appState.completionManager.isVisible {
-                VStack {
-                    CompletionOverlay(
-                        completions: appState.completionManager.completions,
-                        selectedIndex: appState.completionManager.selectedIndex,
-                        onSelect: { completion in
-                            selectCompletion(completion)
-                        }
-                    )
-                    .frame(maxWidth: 400)
-                    .padding(.top, 50)
+                GeometryReader { geometry in
+                    let completionHeight: CGFloat = min(CGFloat(appState.completionManager.completions.count * 28 + 60), 300)
+                    let bottomPadding: CGFloat = 40  // Space for command line
+                    let topThreshold: CGFloat = 150  // If less than this space at bottom, show at top
 
-                    Spacer()
+                    // Calculate if we should show at top or bottom
+                    let showAtTop = geometry.size.height - bottomPadding < completionHeight + topThreshold
+
+                    VStack {
+                        if !showAtTop {
+                            Spacer()
+                        }
+
+                        HStack {
+                            Spacer()
+                            CompletionOverlay(
+                                completions: appState.completionManager.completions,
+                                selectedIndex: appState.completionManager.selectedIndex,
+                                onSelect: { completion in
+                                    selectCompletion(completion)
+                                }
+                            )
+                            .frame(maxWidth: 400)
+                            Spacer()
+                        }
+
+                        if showAtTop {
+                            Spacer()
+                        } else {
+                            Spacer()
+                                .frame(height: bottomPadding)
+                        }
+                    }
+                    .padding(.top, showAtTop ? 20 : 0)
                 }
             }
 
