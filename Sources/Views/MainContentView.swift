@@ -1,5 +1,9 @@
 import SwiftUI
 
+// Shared colors
+private let contentBgColor = Color(nsColor: NSColor(red: 30/255, green: 30/255, blue: 30/255, alpha: 1.0))
+private let contentPadding: CGFloat = 8
+
 struct MainContentView: View {
     @Bindable var appState: AppState
 
@@ -10,26 +14,35 @@ struct MainContentView: View {
 
             // Main content area with optional sidebar
             HStack(spacing: 0) {
-                // Sidebar
+                // Sidebar with padding
                 if appState.sidebarVisible {
                     SidebarView(appState: appState)
-                        .frame(width: 240)
+                        .padding(.leading, contentPadding)
+                        .padding(.vertical, contentPadding)
+                        .frame(width: 240 + contentPadding)
+                        .background(contentBgColor)
                         .transition(.move(edge: .leading))
                 }
 
-                // Terminal content for active tab
+                // Terminal content for active tab with padding
                 if let activeTab = appState.activeTab {
                     TerminalContent(
                         appState: appState,
                         tab: activeTab
                     )
+                    .padding(.trailing, contentPadding)
+                    .padding(.vertical, contentPadding)
+                    .padding(.leading, appState.sidebarVisible ? 0 : contentPadding)
+                    .background(contentBgColor)
                 } else {
                     Text("No active terminal")
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .background(Color(nsColor: NSColor(red: 30/255, green: 30/255, blue: 30/255, alpha: 1.0)))
+                        .background(contentBgColor)
                 }
             }
+            .background(contentBgColor)
         }
+        .background(contentBgColor)
     }
 }
 
