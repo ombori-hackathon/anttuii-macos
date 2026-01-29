@@ -34,6 +34,18 @@ class CompletionManager {
             // Check if task was cancelled during sleep
             guard !Task.isCancelled else { return }
 
+            // Get history completions first (local, fast)
+            let historyEntries = HistoryService.shared.getMatchingHistory(prefix: input, limit: 5)
+            let historyCompletions = historyEntries.map { entry in
+                Completion(
+                    text: entry,
+                    type: "history",
+                    description: "From shell history",
+                    insertText: entry,
+                    score: 1.0  // High score for history
+                )
+            }
+
             do {
                 let response = try await APIClient.shared.fetchCompletions(
                     input: input,
@@ -42,14 +54,34 @@ class CompletionManager {
                     shell: "zsh"
                 )
 
+                // Merge: history first, then API completions
+                var allCompletions = historyCompletions
+
+                // Add API completions that aren't duplicates of history
+                let historyTexts = Set(historyEntries)
+                for completion in response.completions {
+                    if !historyTexts.contains(completion.insertText) {
+                        allCompletions.append(completion)
+                    }
+                }
+
                 // Update state (already on main actor)
-                self.completions = response.completions
-                self.prefixLength = response.prefixLength
+                self.completions = allCompletions
+                // For history completions, we replace the entire input
+                // Use the full input length if we have history, otherwise use API's prefix
+                self.prefixLength = !historyCompletions.isEmpty ? input.count : response.prefixLength
                 self.selectedIndex = 0
-                self.isVisible = !response.completions.isEmpty
+                self.isVisible = !allCompletions.isEmpty
             } catch {
-                // Silently fail - just hide completions
-                self.dismiss()
+                // API failed but we might still have history completions
+                if !historyCompletions.isEmpty {
+                    self.completions = historyCompletions
+                    self.prefixLength = input.count
+                    self.selectedIndex = 0
+                    self.isVisible = true
+                } else {
+                    self.dismiss()
+                }
             }
         }
     }

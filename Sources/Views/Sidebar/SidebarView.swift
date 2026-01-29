@@ -303,6 +303,10 @@ struct SidebarView: View {
                     activateItem(item)
                 }
             }
+            .onRightClick {
+                selectedIndex = adjustedIndex
+                showActionMenuForSelected()
+            }
         }
     }
 
@@ -729,5 +733,38 @@ struct TUIFileLine: View {
         case .untracked: return Color(white: 0.6)
         default: return .white
         }
+    }
+}
+
+// MARK: - Right Click Support
+
+struct RightClickableView: NSViewRepresentable {
+    let onRightClick: () -> Void
+
+    func makeNSView(context: Context) -> RightClickNSView {
+        let view = RightClickNSView()
+        view.onRightClick = onRightClick
+        return view
+    }
+
+    func updateNSView(_ nsView: RightClickNSView, context: Context) {
+        nsView.onRightClick = onRightClick
+    }
+
+    class RightClickNSView: NSView {
+        var onRightClick: (() -> Void)?
+
+        override func rightMouseDown(with event: NSEvent) {
+            onRightClick?()
+        }
+    }
+}
+
+extension View {
+    func onRightClick(perform action: @escaping () -> Void) -> some View {
+        overlay(
+            RightClickableView(onRightClick: action)
+                .allowsHitTesting(true)
+        )
     }
 }

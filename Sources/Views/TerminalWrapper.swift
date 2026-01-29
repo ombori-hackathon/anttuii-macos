@@ -4,6 +4,7 @@ import SwiftTerm
 struct TerminalWrapper: NSViewRepresentable {
     @Binding var currentInput: String
     @Binding var inSubprocess: Bool
+    @Binding var cursorY: CGFloat
     var completionVisible: Bool
     var onInputChanged: ((String) -> Void)?
     var onDirectoryChanged: ((String) -> Void)?
@@ -21,6 +22,11 @@ struct TerminalWrapper: NSViewRepresentable {
         terminalView.onDirectoryChanged = { newDir in
             DispatchQueue.main.async {
                 onDirectoryChanged?(newDir)
+            }
+        }
+        terminalView.onCursorPositionChanged = { newY in
+            DispatchQueue.main.async {
+                cursorY = newY
             }
         }
         terminalView.completionVisible = completionVisible

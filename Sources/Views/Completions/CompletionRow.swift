@@ -61,6 +61,8 @@ struct CompletionRow: View {
             return "doc"
         case "directory":
             return "folder"
+        case "history":
+            return "clock.arrow.circlepath"
         default:
             return "chevron.right"
         }
@@ -80,6 +82,8 @@ struct CompletionRow: View {
             return .gray
         case "directory":
             return .cyan
+        case "history":
+            return .yellow
         default:
             return .green
         }

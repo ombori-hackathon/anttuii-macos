@@ -14,6 +14,7 @@ extension Notification.Name {
 class AnttuiiTerminalView: LocalProcessTerminalView {
     var onInputChanged: ((String) -> Void)?
     var onDirectoryChanged: ((String) -> Void)?
+    var onCursorPositionChanged: ((CGFloat) -> Void)?
 
     private(set) var currentInput: String = ""
     private var hasStartedProcess = false
@@ -26,6 +27,9 @@ class AnttuiiTerminalView: LocalProcessTerminalView {
     // Track if we're in a subprocess (nano, vim, etc.) - completions disabled
     private(set) var inSubprocess: Bool = false
     private var lastCommand: String = ""
+
+    // Cursor Y position in pixels from top
+    private(set) var cursorYPosition: CGFloat = 0
 
     // Known interactive commands that take over the terminal
     private let interactiveCommands: Set<String> = [
@@ -222,6 +226,10 @@ class AnttuiiTerminalView: LocalProcessTerminalView {
             lastCommand = currentInput
             currentInput = ""
             onInputChanged?(currentInput)
+            // Update cursor position after enter (cursor moves to new line)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+                self?.updateCursorPosition()
+            }
         } else if event.keyCode == 51 { // Backspace
             if !currentInput.isEmpty {
                 currentInput.removeLast()
@@ -233,6 +241,10 @@ class AnttuiiTerminalView: LocalProcessTerminalView {
             if characters == "\u{03}" { // Ctrl+C
                 currentInput = ""
                 onInputChanged?(currentInput)
+                // Update cursor position after Ctrl+C
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+                    self?.updateCursorPosition()
+                }
             }
         } else if !event.modifierFlags.contains(.command) && event.keyCode != 48 {
             // Regular character input (not cmd shortcuts, not tab)
@@ -242,6 +254,7 @@ class AnttuiiTerminalView: LocalProcessTerminalView {
                 }
             }
             onInputChanged?(currentInput)
+            updateCursorPosition()
         }
     }
 
@@ -290,6 +303,24 @@ class AnttuiiTerminalView: LocalProcessTerminalView {
     func resetInput() {
         currentInput = ""
         onInputChanged?(currentInput)
+    }
+
+    // MARK: - Cursor Position
+
+    /// Calculate cursor Y position in pixels from the top of the view
+    func updateCursorPosition() {
+        let terminal = getTerminal()
+        let cursorRow = terminal.buffer.y
+
+        // Get cell height based on font metrics
+        let terminalFont = font
+        let cellHeight = ceil(terminalFont.ascender + abs(terminalFont.descender) + terminalFont.leading) + 2
+
+        let newY = CGFloat(cursorRow) * cellHeight
+        if newY != cursorYPosition {
+            cursorYPosition = newY
+            onCursorPositionChanged?(cursorYPosition)
+        }
     }
 
     // MARK: - Subprocess Detection

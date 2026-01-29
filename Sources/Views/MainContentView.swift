@@ -19,7 +19,7 @@ struct MainContentView: View {
                     SidebarView(appState: appState)
                         .padding(.leading, contentPadding)
                         .padding(.vertical, contentPadding)
-                        .frame(width: 240 + contentPadding)
+                        .frame(width: 280 + contentPadding)
                         .background(contentBgColor)
                         .transition(.move(edge: .leading))
                 }
@@ -66,6 +66,12 @@ struct TerminalContent: View {
                         appState.updateTabSubprocess(tab.id, inSubprocess: newValue)
                     }
                 ),
+                cursorY: Binding(
+                    get: { tab.cursorY },
+                    set: { newValue in
+                        appState.updateTabCursorY(tab.id, cursorY: newValue)
+                    }
+                ),
                 completionVisible: appState.completionManager.isVisible,
                 onInputChanged: { newInput in
                     appState.updateTabInput(tab.id, input: newInput)
@@ -84,42 +90,34 @@ struct TerminalContent: View {
                 }
             )
 
-            // Completion overlay - positioned above the command line
+            // Completion overlay - positioned below the cursor line
             if appState.completionManager.isVisible {
                 GeometryReader { geometry in
                     let completionHeight: CGFloat = min(CGFloat(appState.completionManager.completions.count * 28 + 60), 300)
-                    let bottomPadding: CGFloat = 40  // Space for command line
-                    let topThreshold: CGFloat = 150  // If less than this space at bottom, show at top
+                    let lineHeight: CGFloat = 18  // Approximate line height
+                    let cursorY = tab.cursorY
 
-                    // Calculate if we should show at top or bottom
-                    let showAtTop = geometry.size.height - bottomPadding < completionHeight + topThreshold
+                    // Position below cursor line, but ensure it fits
+                    let proposedY = cursorY + lineHeight + 4
+                    let spaceBelow = geometry.size.height - proposedY
 
-                    VStack {
-                        if !showAtTop {
-                            Spacer()
-                        }
+                    // If not enough space below, show above cursor
+                    let showAbove = spaceBelow < completionHeight && cursorY > completionHeight
+                    let finalY = showAbove ? max(0, cursorY - completionHeight - 4) : proposedY
 
-                        HStack {
-                            Spacer()
-                            CompletionOverlay(
-                                completions: appState.completionManager.completions,
-                                selectedIndex: appState.completionManager.selectedIndex,
-                                onSelect: { completion in
-                                    selectCompletion(completion)
-                                }
-                            )
-                            .frame(maxWidth: 400)
-                            Spacer()
-                        }
-
-                        if showAtTop {
-                            Spacer()
-                        } else {
-                            Spacer()
-                                .frame(height: bottomPadding)
-                        }
+                    HStack {
+                        Spacer()
+                        CompletionOverlay(
+                            completions: appState.completionManager.completions,
+                            selectedIndex: appState.completionManager.selectedIndex,
+                            onSelect: { completion in
+                                selectCompletion(completion)
+                            }
+                        )
+                        .frame(maxWidth: 400)
+                        Spacer()
                     }
-                    .padding(.top, showAtTop ? 20 : 0)
+                    .offset(y: finalY)
                 }
             }
 

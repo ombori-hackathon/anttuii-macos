@@ -76,6 +76,12 @@ class AppState {
         }
     }
 
+    func updateTabCursorY(_ tabId: UUID, cursorY: CGFloat) {
+        if let index = tabs.firstIndex(where: { $0.id == tabId }) {
+            tabs[index].cursorY = cursorY
+        }
+    }
+
     // Handle Tab key for completion navigation
     func handleTabKey() -> Bool {
         if completionManager.isVisible {
