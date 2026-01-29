@@ -157,9 +157,8 @@ class AnttuiiTerminalView: LocalProcessTerminalView {
         }
         font = terminalFont
 
-        // Semi-transparent dark background
-        let bgColor = NSColor(red: 30/255, green: 30/255, blue: 30/255, alpha: 0.95)
-        nativeBackgroundColor = bgColor
+        // Background color is set by BlurredTerminalContainer for transparency
+        // Only set foreground color here
         nativeForegroundColor = NSColor.white
 
         // Configure cursor
