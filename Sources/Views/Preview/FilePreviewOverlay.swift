@@ -18,7 +18,14 @@ struct FilePreviewOverlay: View {
     @State private var gitDiff: GitDiffResult?
     @State private var isLoading: Bool = true
     @State private var errorMessage: String?
+    @State private var currentImage: NSImage?
+    @State private var committedImage: NSImage?
     @FocusState private var isFocused: Bool
+
+    private var isImageFile: Bool {
+        let imageExtensions = Set(["png", "jpg", "jpeg", "gif", "bmp", "tiff", "tif", "webp", "heic", "heif", "ico"])
+        return imageExtensions.contains(item.path.pathExtension.lowercased())
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -31,6 +38,15 @@ struct FilePreviewOverlay: View {
                 loadingView
             } else if let error = errorMessage {
                 errorView(error)
+            } else if isImageFile {
+                // Image preview
+                if gitStatus == .modified, let current = currentImage {
+                    imageCompareView(committed: committedImage, current: current)
+                } else if let image = currentImage {
+                    imageView(image)
+                } else {
+                    errorView("Could not load image")
+                }
             } else if let diff = gitDiff, gitStatus == .modified {
                 // Split diff view for modified files
                 diffView(diff)
@@ -186,6 +202,106 @@ struct FilePreviewOverlay: View {
         .background(previewBgColor)
     }
 
+    private func imageView(_ image: NSImage) -> some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 0) {
+                Text("│ ")
+                    .foregroundColor(previewBorderColor)
+                Spacer()
+                Text(" │")
+                    .foregroundColor(previewBorderColor)
+            }
+            .frame(height: 8)
+
+            HStack(spacing: 0) {
+                Text("│")
+                    .foregroundColor(previewBorderColor)
+                Spacer()
+                Image(nsImage: image)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .padding(8)
+                Spacer()
+                Text("│")
+                    .foregroundColor(previewBorderColor)
+            }
+
+            HStack(spacing: 0) {
+                Text("│ ")
+                    .foregroundColor(previewBorderColor)
+                Text("\(Int(image.size.width))×\(Int(image.size.height))")
+                    .foregroundColor(previewDimColor)
+                Spacer()
+                Text(" │")
+                    .foregroundColor(previewBorderColor)
+            }
+            .frame(height: 20)
+        }
+        .background(previewBgColor)
+    }
+
+    private func imageCompareView(committed: NSImage?, current: NSImage) -> some View {
+        HSplitView {
+            // Left side: committed version
+            VStack(spacing: 0) {
+                HStack(spacing: 0) {
+                    Text("│ ")
+                        .foregroundColor(previewBorderColor)
+                    Text("COMMITTED")
+                        .foregroundColor(.green)
+                        .fontWeight(.bold)
+                    Spacer()
+                    Text(" │")
+                        .foregroundColor(previewBorderColor)
+                }
+                .frame(height: 20)
+                .background(Color(white: 0.15))
+
+                if let img = committed {
+                    Image(nsImage: img)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .padding(8)
+                } else {
+                    VStack {
+                        Spacer()
+                        Text("New file")
+                            .foregroundColor(previewDimColor)
+                        Spacer()
+                    }
+                }
+            }
+            .frame(minWidth: 200)
+            .background(previewBgColor)
+
+            // Right side: current/modified version
+            VStack(spacing: 0) {
+                HStack(spacing: 0) {
+                    Text("│ ")
+                        .foregroundColor(previewBorderColor)
+                    Text("MODIFIED")
+                        .foregroundColor(.yellow)
+                        .fontWeight(.bold)
+                    Spacer()
+                    Text(" │")
+                        .foregroundColor(previewBorderColor)
+                }
+                .frame(height: 20)
+                .background(Color(white: 0.15))
+
+                Image(nsImage: current)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .padding(8)
+            }
+            .frame(minWidth: 200)
+            .background(previewBgColor)
+        }
+    }
+
     private func diffView(_ diff: GitDiffResult) -> some View {
         HSplitView {
             // Left side: committed version
@@ -257,17 +373,39 @@ struct FilePreviewOverlay: View {
 
         Task {
             do {
-                // Check if file is too large (> 1MB)
+                // Check if file is too large (> 10MB for images, 1MB for text)
                 let attrs = try FileManager.default.attributesOfItem(atPath: item.path.path)
-                if let size = attrs[.size] as? Int, size > 1_000_000 {
+                let maxSize = isImageFile ? 10_000_000 : 1_000_000
+                if let size = attrs[.size] as? Int, size > maxSize {
                     await MainActor.run {
-                        errorMessage = "File too large to preview (> 1MB)"
+                        errorMessage = "File too large to preview"
                         isLoading = false
                     }
                     return
                 }
 
-                // Check if file is binary
+                // Handle image files
+                if isImageFile {
+                    let image = NSImage(contentsOf: item.path)
+
+                    // If git modified, also load committed version
+                    if gitStatus == .modified {
+                        let committedImg = await loadCommittedImage()
+                        await MainActor.run {
+                            self.currentImage = image
+                            self.committedImage = committedImg
+                            self.isLoading = false
+                        }
+                    } else {
+                        await MainActor.run {
+                            self.currentImage = image
+                            self.isLoading = false
+                        }
+                    }
+                    return
+                }
+
+                // Check if file is binary (non-image)
                 if isBinaryFile(item.path) {
                     await MainActor.run {
                         errorMessage = "Binary file cannot be previewed"
@@ -302,9 +440,8 @@ struct FilePreviewOverlay: View {
     }
 
     private func isBinaryFile(_ url: URL) -> Bool {
-        // Check common binary extensions
+        // Check common binary extensions (excluding images which we handle separately)
         let binaryExtensions = Set([
-            "png", "jpg", "jpeg", "gif", "bmp", "ico", "webp",
             "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx",
             "zip", "tar", "gz", "rar", "7z",
             "exe", "dll", "so", "dylib", "app",
@@ -314,6 +451,38 @@ struct FilePreviewOverlay: View {
         ])
 
         return binaryExtensions.contains(url.pathExtension.lowercased())
+    }
+
+    private func loadCommittedImage() async -> NSImage? {
+        guard let gitRoot = findGitRoot(from: item.path.deletingLastPathComponent()) else {
+            return nil
+        }
+
+        let filePath = item.path.path
+        let gitRootPath = gitRoot.path
+        guard filePath.hasPrefix(gitRootPath) else {
+            return nil
+        }
+        let relativePath = String(filePath.dropFirst(gitRootPath.count + 1))
+
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+        task.arguments = ["show", "HEAD:\(relativePath)"]
+        task.currentDirectoryURL = gitRoot
+
+        let pipe = Pipe()
+        task.standardOutput = pipe
+        task.standardError = FileHandle.nullDevice
+
+        do {
+            try task.run()
+            task.waitUntilExit()
+
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            return NSImage(data: data)
+        } catch {
+            return nil
+        }
     }
 
     private func loadGitDiff() async -> GitDiffResult? {
