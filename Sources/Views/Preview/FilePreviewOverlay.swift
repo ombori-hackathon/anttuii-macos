@@ -412,10 +412,23 @@ struct FilePreviewOverlay: View {
     }
 
     private func getCommittedContent() -> String {
+        // First, find the git root directory
+        guard let gitRoot = findGitRoot(from: item.path.deletingLastPathComponent()) else {
+            return ""
+        }
+
+        // Get the file path relative to git root
+        let filePath = item.path.path
+        let gitRootPath = gitRoot.path
+        guard filePath.hasPrefix(gitRootPath) else {
+            return ""
+        }
+        let relativePath = String(filePath.dropFirst(gitRootPath.count + 1)) // +1 for the slash
+
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/usr/bin/git")
-        task.arguments = ["show", "HEAD:\(item.path.lastPathComponent)"]
-        task.currentDirectoryURL = item.path.deletingLastPathComponent()
+        task.arguments = ["show", "HEAD:\(relativePath)"]
+        task.currentDirectoryURL = gitRoot
 
         let pipe = Pipe()
         task.standardOutput = pipe
@@ -430,6 +443,18 @@ struct FilePreviewOverlay: View {
         } catch {
             return ""
         }
+    }
+
+    private func findGitRoot(from url: URL) -> URL? {
+        var current = url
+        while current.path != "/" {
+            let gitPath = current.appendingPathComponent(".git")
+            if FileManager.default.fileExists(atPath: gitPath.path) {
+                return current
+            }
+            current = current.deletingLastPathComponent()
+        }
+        return nil
     }
 }
 

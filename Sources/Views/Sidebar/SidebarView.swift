@@ -296,22 +296,19 @@ struct SidebarView: View {
     private var fileRows: some View {
         ForEach(Array(fileService.rootItems.enumerated()), id: \.element.id) { index, item in
             let adjustedIndex = hasParent ? index + 1 : index
-            TUIFileLine(
-                icon: item.isDirectory ? "/" : " ",
-                name: item.name,
-                iconColor: colorForItem(item),
+            ClickableFileRow(
+                item: item,
                 isSelected: selectedIndex == adjustedIndex,
-                isDirectory: item.isDirectory,
-                gitStatus: item.gitStatus
+                iconColor: colorForItem(item),
+                onLeftClick: {
+                    selectedIndex = adjustedIndex
+                    activateItem(item)
+                },
+                onRightClick: {
+                    selectedIndex = adjustedIndex
+                    showActionMenuForSelected()
+                }
             )
-            .onTapGesture {
-                selectedIndex = adjustedIndex
-                activateItem(item)
-            }
-            .onRightClick {
-                selectedIndex = adjustedIndex
-                showActionMenuForSelected()
-            }
         }
     }
 
@@ -741,35 +738,71 @@ struct TUIFileLine: View {
     }
 }
 
-// MARK: - Right Click Support
+// MARK: - Clickable File Row (handles both left and right clicks)
 
-struct RightClickableView: NSViewRepresentable {
+struct ClickableFileRow: NSViewRepresentable {
+    let item: FileItem
+    let isSelected: Bool
+    let iconColor: Color
+    let onLeftClick: () -> Void
     let onRightClick: () -> Void
 
-    func makeNSView(context: Context) -> RightClickNSView {
-        let view = RightClickNSView()
+    func makeNSView(context: Context) -> ClickableRowNSView {
+        let view = ClickableRowNSView()
+        view.onLeftClick = onLeftClick
         view.onRightClick = onRightClick
+        updateHostingView(view)
         return view
     }
 
-    func updateNSView(_ nsView: RightClickNSView, context: Context) {
+    func updateNSView(_ nsView: ClickableRowNSView, context: Context) {
+        nsView.onLeftClick = onLeftClick
         nsView.onRightClick = onRightClick
+        updateHostingView(nsView)
     }
 
-    class RightClickNSView: NSView {
+    private func updateHostingView(_ nsView: ClickableRowNSView) {
+        let swiftUIView = TUIFileLine(
+            icon: item.isDirectory ? "/" : " ",
+            name: item.name,
+            iconColor: iconColor,
+            isSelected: isSelected,
+            isDirectory: item.isDirectory,
+            gitStatus: item.gitStatus
+        )
+
+        if nsView.hostingView == nil {
+            let hosting = NSHostingView(rootView: swiftUIView)
+            hosting.translatesAutoresizingMaskIntoConstraints = false
+            nsView.addSubview(hosting)
+            NSLayoutConstraint.activate([
+                hosting.leadingAnchor.constraint(equalTo: nsView.leadingAnchor),
+                hosting.trailingAnchor.constraint(equalTo: nsView.trailingAnchor),
+                hosting.topAnchor.constraint(equalTo: nsView.topAnchor),
+                hosting.bottomAnchor.constraint(equalTo: nsView.bottomAnchor)
+            ])
+            nsView.hostingView = hosting
+        } else {
+            nsView.hostingView?.rootView = swiftUIView
+        }
+    }
+
+    class ClickableRowNSView: NSView {
+        var onLeftClick: (() -> Void)?
         var onRightClick: (() -> Void)?
+        var hostingView: NSHostingView<TUIFileLine>?
+
+        override func mouseDown(with event: NSEvent) {
+            onLeftClick?()
+        }
 
         override func rightMouseDown(with event: NSEvent) {
             onRightClick?()
         }
+
+        override var intrinsicContentSize: NSSize {
+            return NSSize(width: NSView.noIntrinsicMetric, height: tuiLineHeight - 2)
+        }
     }
 }
 
-extension View {
-    func onRightClick(perform action: @escaping () -> Void) -> some View {
-        overlay(
-            RightClickableView(onRightClick: action)
-                .allowsHitTesting(true)
-        )
-    }
-}
