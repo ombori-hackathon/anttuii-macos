@@ -8,6 +8,7 @@ extension Notification.Name {
     static let terminalEscapePressed = Notification.Name("terminalEscapePressed")
     static let terminalInsertCompletion = Notification.Name("terminalInsertCompletion")
     static let terminalInsertCommand = Notification.Name("terminalInsertCommand")
+    static let terminalAppendText = Notification.Name("terminalAppendText")
 }
 
 class AnttuiiTerminalView: LocalProcessTerminalView {
@@ -77,6 +78,26 @@ class AnttuiiTerminalView: LocalProcessTerminalView {
             name: .terminalInsertCommand,
             object: nil
         )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleAppendText(_:)),
+            name: .terminalAppendText,
+            object: nil
+        )
+    }
+
+    @objc private func handleAppendText(_ notification: Notification) {
+        guard let userInfo = notification.userInfo,
+              let text = userInfo["text"] as? String else {
+            return
+        }
+
+        // Just append the text (don't clear the line)
+        send(txt: text)
+
+        // Update our tracked input
+        currentInput += text
+        onInputChanged?(currentInput)
     }
 
     @objc private func handleInsertCommand(_ notification: Notification) {

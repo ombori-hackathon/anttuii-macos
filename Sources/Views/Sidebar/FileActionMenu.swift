@@ -13,6 +13,7 @@ enum FileAction: String, CaseIterable, Identifiable {
     case copyPath = "Copy Path"
     case edit = "Edit"
     case preview = "Preview"
+    case pasteHere = "Paste here"
 
     var id: String { rawValue }
 
@@ -28,6 +29,7 @@ enum FileAction: String, CaseIterable, Identifiable {
         case .copyPath: return "cp"
         case .edit: return "ed"
         case .preview: return "pv"
+        case .pasteHere: return "ps"
         }
     }
 
@@ -43,6 +45,7 @@ enum FileAction: String, CaseIterable, Identifiable {
         case .copyPath: return "y"
         case .edit: return "e"
         case .preview: return "p"
+        case .pasteHere: return "v"
         }
     }
 
@@ -54,6 +57,7 @@ enum FileAction: String, CaseIterable, Identifiable {
         case .open, .edit: return .yellow
         case .copyPath: return .white
         case .preview: return .purple
+        case .pasteHere: return .orange
         }
     }
 
@@ -91,12 +95,20 @@ enum FileAction: String, CaseIterable, Identifiable {
         case .preview:
             // Preview is handled specially - returns nil to signal no terminal command
             return nil
+        case .pasteHere:
+            // Paste just appends the directory path to complete a pending cp/mv command
+            return escapedPath
         }
     }
 
     /// Whether this action opens a preview overlay instead of a terminal command
     var isPreviewAction: Bool {
         self == .preview
+    }
+
+    /// Whether this action completes a pending copy operation
+    var isPasteAction: Bool {
+        self == .pasteHere
     }
 
     private func shellEscape(_ path: String) -> String {
@@ -121,18 +133,28 @@ enum FileAction: String, CaseIterable, Identifiable {
 struct FileActionMenu: View {
     let item: FileItem
     let directory: URL
+    let copyPending: Bool
     @Binding var isVisible: Bool
     @Binding var selectedAction: Int
     let onAction: (FileAction) -> Void
     @FocusState private var isFocused: Bool
 
     private var actions: [FileAction] {
-        // Only show preview for files, not directories
-        if item.isDirectory {
-            return [.open, .edit, .copy, .move, .rename, .delete, .mkdir, .touch, .copyPath]
-        } else {
-            return [.preview, .open, .edit, .copy, .move, .rename, .delete, .mkdir, .touch, .copyPath]
+        var result: [FileAction] = []
+
+        // Show "Paste here" at the top for directories when copy is pending
+        if item.isDirectory && copyPending {
+            result.append(.pasteHere)
         }
+
+        // Regular actions based on file type
+        if item.isDirectory {
+            result.append(contentsOf: [.open, .edit, .copy, .move, .rename, .delete, .mkdir, .touch, .copyPath])
+        } else {
+            result.append(contentsOf: [.preview, .open, .edit, .copy, .move, .rename, .delete, .mkdir, .touch, .copyPath])
+        }
+
+        return result
     }
 
     var body: some View {
@@ -233,6 +255,12 @@ struct FileActionMenu: View {
             return .handled
         }
         // Shortcut keys
+        .onKeyPress("v") {
+            if copyPending && item.isDirectory {
+                executeAction(.pasteHere)
+            }
+            return .handled
+        }
         .onKeyPress("p") { executeAction(.preview); return .handled }
         .onKeyPress("o") { executeAction(.open); return .handled }
         .onKeyPress("e") { executeAction(.edit); return .handled }

@@ -20,6 +20,9 @@ class AppState {
     var previewItem: FileItem?
     var previewGitStatus: FileItem.GitStatus = .none
 
+    // Clipboard state for copy/paste workflow
+    var pendingCopyOperation: Bool = false
+
     init() {
         // Create first tab automatically
         let firstTabId = createTab()
@@ -146,5 +149,15 @@ class AppState {
         previewVisible = false
         previewItem = nil
         previewGitStatus = .none
+    }
+
+    // MARK: - Copy/Paste Workflow
+
+    func setCopyPending() {
+        pendingCopyOperation = true
+    }
+
+    func clearCopyPending() {
+        pendingCopyOperation = false
     }
 }

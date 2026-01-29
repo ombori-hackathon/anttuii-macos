@@ -48,6 +48,7 @@ struct SidebarView: View {
                     FileActionMenu(
                         item: item,
                         directory: fileService.currentDirectory,
+                        copyPending: appState.pendingCopyOperation,
                         isVisible: $showActionMenu,
                         selectedAction: $actionMenuSelectedIndex,
                         onAction: { action in
@@ -337,9 +338,33 @@ struct SidebarView: View {
             return
         }
 
+        // Handle paste action - completes a pending copy and clears the state
+        if action.isPasteAction {
+            guard let destinationPath = action.command(for: item, in: fileService.currentDirectory) else {
+                return
+            }
+
+            // Append destination path to complete the cp command
+            NotificationCenter.default.post(
+                name: .terminalAppendText,
+                object: nil,
+                userInfo: ["text": destinationPath]
+            )
+
+            // Clear the pending copy state
+            appState.clearCopyPending()
+            appState.focusedPane = .terminal
+            return
+        }
+
         guard let command = action.command(for: item, in: fileService.currentDirectory) else {
             // Some actions like copyPath handle themselves
             return
+        }
+
+        // Track if this is a copy action - set pending state
+        if action == .copy {
+            appState.setCopyPending()
         }
 
         // Send command to terminal via notification
