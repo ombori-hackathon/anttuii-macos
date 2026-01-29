@@ -63,6 +63,12 @@ class AppState {
         }
     }
 
+    func updateTabSubprocess(_ tabId: UUID, inSubprocess: Bool) {
+        if let index = tabs.firstIndex(where: { $0.id == tabId }) {
+            tabs[index].inSubprocess = inSubprocess
+        }
+    }
+
     // Handle Tab key for completion navigation
     func handleTabKey() -> Bool {
         if completionManager.isVisible {

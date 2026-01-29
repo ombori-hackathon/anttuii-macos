@@ -4,6 +4,7 @@ struct TerminalTab: Identifiable {
     let id: UUID
     var workingDirectory: URL
     var currentInput: String = ""
+    var inSubprocess: Bool = false  // True when in nano/vim/etc.
 
     init(id: UUID = UUID(), workingDirectory: URL? = nil) {
         self.id = id

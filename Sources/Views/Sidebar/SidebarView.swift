@@ -1,7 +1,9 @@
 import SwiftUI
 import AppKit
 
-// MARK: - Color Constants
+// MARK: - Constants
+private let tuiFontSize: CGFloat = 13  // Match terminal font size
+private let tuiLineHeight: CGFloat = 20
 private let tuiBgColor = Color(nsColor: NSColor(red: 30/255, green: 30/255, blue: 30/255, alpha: 0.95))
 private let tuiBorderColor = Color(white: 0.4)
 private let tuiDimColor = Color(white: 0.5)
@@ -27,7 +29,7 @@ struct SidebarView: View {
             statusSection
             TUIBoxBottom()
         }
-        .font(.system(size: 11, design: .monospaced))
+        .font(.system(size: tuiFontSize, design: .monospaced))
         .background(tuiBgColor)
         .focusable()
         .focused($isFocused)
@@ -48,6 +50,7 @@ struct SidebarView: View {
         .onKeyPress(.downArrow) { moveSelection(by: 1); return .handled }
         .onKeyPress(.return) { activateSelected(); return .handled }
         .onKeyPress("g") { selectedIndex = 0; return .handled }
+        .onKeyPress("r") { fileService.refreshGitStatus(); return .handled }
     }
 
     // MARK: - View Components
@@ -56,6 +59,9 @@ struct SidebarView: View {
         VStack(spacing: 0) {
             TUIBoxTop(title: "FILES", isActive: isActive)
             pathBar
+            if fileService.isGitRepo {
+                gitBranchBar
+            }
         }
     }
 
@@ -70,7 +76,29 @@ struct SidebarView: View {
             Text(" │")
                 .foregroundColor(tuiBorderColor)
         }
-        .frame(height: 18)
+        .frame(height: tuiLineHeight)
+        .background(tuiBgColor)
+    }
+
+    private var gitBranchBar: some View {
+        HStack(spacing: 0) {
+            Text("│ ")
+                .foregroundColor(tuiBorderColor)
+            Text("")
+                .foregroundColor(.orange)
+            Text(" ")
+            if let branch = fileService.gitBranch {
+                Text(branch)
+                    .foregroundColor(.green)
+            } else {
+                Text("detached")
+                    .foregroundColor(.red)
+            }
+            Spacer(minLength: 0)
+            Text(" │")
+                .foregroundColor(tuiBorderColor)
+        }
+        .frame(height: tuiLineHeight)
         .background(tuiBgColor)
     }
 
@@ -92,7 +120,8 @@ struct SidebarView: View {
                 name: "",
                 iconColor: .cyan,
                 isSelected: selectedIndex == 0,
-                isDirectory: true
+                isDirectory: true,
+                gitStatus: .none
             )
             .onTapGesture { navigateToParent() }
         }
@@ -106,7 +135,8 @@ struct SidebarView: View {
                 name: item.name,
                 iconColor: colorForItem(item),
                 isSelected: selectedIndex == adjustedIndex,
-                isDirectory: item.isDirectory
+                isDirectory: item.isDirectory,
+                gitStatus: item.gitStatus
             )
             .onTapGesture {
                 selectedIndex = adjustedIndex
@@ -126,12 +156,14 @@ struct SidebarView: View {
             Text(" items")
                 .foregroundColor(tuiDimColor)
             Spacer(minLength: 0)
-            Text("^H/L ")
-                .foregroundColor(tuiDimColor)
+            if fileService.isGitRepo {
+                Text("r:refresh ")
+                    .foregroundColor(tuiDimColor)
+            }
             Text("│")
                 .foregroundColor(tuiBorderColor)
         }
-        .frame(height: 18)
+        .frame(height: tuiLineHeight)
         .background(tuiBgColor)
     }
 
@@ -202,6 +234,15 @@ struct SidebarView: View {
     }
 
     private func colorForItem(_ item: FileItem) -> Color {
+        // Git status takes priority for coloring
+        switch item.gitStatus {
+        case .modified: return .yellow
+        case .added: return .green
+        case .deleted: return .red
+        case .untracked: return Color(white: 0.6)
+        default: break
+        }
+
         if item.isDirectory { return .cyan }
         switch item.path.pathExtension.lowercased() {
         case "swift": return .orange
@@ -232,14 +273,14 @@ struct TUIBoxTop: View {
                 .fontWeight(.bold)
             Text(" ")
             GeometryReader { geo in
-                Text(String(repeating: "─", count: max(0, Int(geo.size.width / 7))))
+                Text(String(repeating: "─", count: max(0, Int(geo.size.width / 8))))
                     .foregroundColor(borderColor)
             }
             Text("┐")
                 .foregroundColor(borderColor)
         }
-        .font(.system(size: 11, design: .monospaced))
-        .frame(height: 18)
+        .font(.system(size: tuiFontSize, design: .monospaced))
+        .frame(height: tuiLineHeight)
         .background(tuiBgColor)
     }
 }
@@ -250,14 +291,14 @@ struct TUIBoxBottom: View {
             Text("└")
                 .foregroundColor(tuiBorderColor)
             GeometryReader { geo in
-                Text(String(repeating: "─", count: max(0, Int(geo.size.width / 7))))
+                Text(String(repeating: "─", count: max(0, Int(geo.size.width / 8))))
                     .foregroundColor(tuiBorderColor)
             }
             Text("┘")
                 .foregroundColor(tuiBorderColor)
         }
-        .font(.system(size: 11, design: .monospaced))
-        .frame(height: 18)
+        .font(.system(size: tuiFontSize, design: .monospaced))
+        .frame(height: tuiLineHeight)
         .background(tuiBgColor)
     }
 }
@@ -268,14 +309,14 @@ struct TUIBoxSeparator: View {
             Text("├")
                 .foregroundColor(tuiBorderColor)
             GeometryReader { geo in
-                Text(String(repeating: "─", count: max(0, Int(geo.size.width / 7))))
+                Text(String(repeating: "─", count: max(0, Int(geo.size.width / 8))))
                     .foregroundColor(tuiBorderColor)
             }
             Text("┤")
                 .foregroundColor(tuiBorderColor)
         }
-        .font(.system(size: 11, design: .monospaced))
-        .frame(height: 18)
+        .font(.system(size: tuiFontSize, design: .monospaced))
+        .frame(height: tuiLineHeight)
         .background(tuiBgColor)
     }
 }
@@ -286,6 +327,7 @@ struct TUIFileLine: View {
     let iconColor: Color
     let isSelected: Bool
     let isDirectory: Bool
+    let gitStatus: FileItem.GitStatus
 
     var body: some View {
         HStack(spacing: 0) {
@@ -293,18 +335,45 @@ struct TUIFileLine: View {
                 .foregroundColor(tuiBorderColor)
             Text(isSelected ? ">" : " ")
                 .foregroundColor(.yellow)
+
+            // Git status indicator
+            Text(gitStatus.icon)
+                .foregroundColor(gitStatusColor)
+                .frame(width: 12, alignment: .leading)
+
             Text(icon)
                 .foregroundColor(iconColor)
             Text(name)
-                .foregroundColor(isDirectory ? iconColor : .white)
+                .foregroundColor(isDirectory ? iconColor : nameColor)
                 .lineLimit(1)
             Spacer(minLength: 0)
             Text(" │")
                 .foregroundColor(tuiBorderColor)
         }
-        .font(.system(size: 11, design: .monospaced))
-        .frame(height: 16)
+        .font(.system(size: tuiFontSize, design: .monospaced))
+        .frame(height: tuiLineHeight - 2)
         .background(isSelected ? tuiSelectedBg : tuiBgColor)
         .contentShape(Rectangle())
+    }
+
+    private var gitStatusColor: Color {
+        switch gitStatus {
+        case .modified: return .yellow
+        case .added: return .green
+        case .deleted: return .red
+        case .untracked: return Color(white: 0.6)
+        case .ignored: return Color(white: 0.4)
+        case .none: return .clear
+        }
+    }
+
+    private var nameColor: Color {
+        switch gitStatus {
+        case .modified: return .yellow
+        case .added: return .green
+        case .deleted: return .red
+        case .untracked: return Color(white: 0.6)
+        default: return .white
+        }
     }
 }

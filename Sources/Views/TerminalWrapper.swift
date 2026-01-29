@@ -3,6 +3,7 @@ import SwiftTerm
 
 struct TerminalWrapper: NSViewRepresentable {
     @Binding var currentInput: String
+    @Binding var inSubprocess: Bool
     var completionVisible: Bool
     var onInputChanged: ((String) -> Void)?
     var onDirectoryChanged: ((String) -> Void)?
@@ -12,6 +13,8 @@ struct TerminalWrapper: NSViewRepresentable {
         terminalView.onInputChanged = { newInput in
             DispatchQueue.main.async {
                 currentInput = newInput
+                // Also update subprocess state
+                inSubprocess = terminalView.inSubprocess
                 onInputChanged?(newInput)
             }
         }
@@ -29,6 +32,10 @@ struct TerminalWrapper: NSViewRepresentable {
     func updateNSView(_ nsView: AnttuiiTerminalView, context: Context) {
         // Sync completion visibility state
         nsView.completionVisible = completionVisible
+        // Update subprocess state from terminal
+        DispatchQueue.main.async {
+            inSubprocess = nsView.inSubprocess
+        }
     }
 
     func makeCoordinator() -> Coordinator {

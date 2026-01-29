@@ -21,6 +21,25 @@ class AnttuiiTerminalView: LocalProcessTerminalView {
     // Track if completion is visible (set externally)
     var completionVisible: Bool = false
 
+    // Track if we're in a subprocess (nano, vim, etc.) - completions disabled
+    private(set) var inSubprocess: Bool = false
+    private var lastCommand: String = ""
+
+    // Known interactive commands that take over the terminal
+    private let interactiveCommands: Set<String> = [
+        "nano", "vim", "vi", "nvim", "emacs", "pico", "joe", "ne",  // editors
+        "less", "more", "most", "bat",                               // pagers
+        "man", "info",                                               // documentation
+        "top", "htop", "btop", "glances", "nmon",                   // monitors
+        "ssh", "telnet", "nc", "netcat",                            // network
+        "python", "python3", "node", "irb", "ghci", "lua",          // REPLs
+        "mysql", "psql", "sqlite3", "redis-cli", "mongo",           // databases
+        "ftp", "sftp",                                               // file transfer
+        "screen", "tmux", "byobu",                                   // multiplexers
+        "watch", "tail -f",                                          // continuous output
+        "git log", "git diff", "git show",                          // git pagers
+    ]
+
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         currentDirectory = FileManager.default.currentDirectoryPath
@@ -139,9 +158,23 @@ class AnttuiiTerminalView: LocalProcessTerminalView {
     private func handleKeyEvent(_ event: NSEvent) {
         guard let characters = event.characters else { return }
 
+        // If in subprocess, don't track input (user is in nano/vim/etc.)
+        if inSubprocess {
+            // Check if this might be exiting the subprocess (Ctrl+C, Ctrl+D, Ctrl+X, q, :q, etc.)
+            if event.modifierFlags.contains(.control) {
+                if characters == "\u{03}" || characters == "\u{04}" { // Ctrl+C or Ctrl+D
+                    // Schedule a check to see if we're back at shell prompt
+                    schedulePromptCheck()
+                }
+            }
+            return
+        }
+
         // Handle special keys
         if event.keyCode == 36 { // Return key
             checkForDirectoryChange()
+            checkForSubprocessStart()
+            lastCommand = currentInput
             currentInput = ""
             onInputChanged?(currentInput)
         } else if event.keyCode == 51 { // Backspace
@@ -212,5 +245,59 @@ class AnttuiiTerminalView: LocalProcessTerminalView {
     func resetInput() {
         currentInput = ""
         onInputChanged?(currentInput)
+    }
+
+    // MARK: - Subprocess Detection
+
+    private func checkForSubprocessStart() {
+        let trimmed = currentInput.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return }
+
+        // Get the command (first word or first two words for "git log" etc.)
+        let words = trimmed.split(separator: " ", maxSplits: 2).map(String.init)
+        guard let firstWord = words.first else { return }
+
+        // Check single command
+        if interactiveCommands.contains(firstWord) {
+            inSubprocess = true
+            return
+        }
+
+        // Check two-word commands like "git log", "git diff"
+        if words.count >= 2 {
+            let twoWordCommand = "\(words[0]) \(words[1])"
+            if interactiveCommands.contains(twoWordCommand) {
+                inSubprocess = true
+                return
+            }
+        }
+
+        // Check for piped commands ending in less/more
+        if trimmed.contains(" | less") || trimmed.contains(" | more") {
+            inSubprocess = true
+            return
+        }
+    }
+
+    private func schedulePromptCheck() {
+        // After a potential subprocess exit, wait a moment then check if we're back at prompt
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+            self?.checkIfBackAtPrompt()
+        }
+    }
+
+    private func checkIfBackAtPrompt() {
+        // We can't easily access the terminal buffer content from SwiftTerm
+        // Use a simple heuristic: after Ctrl+C/D, wait a moment then assume we're back at prompt
+        // A more sophisticated approach would require patching SwiftTerm or using a different method
+
+        // For now, just reset subprocess state after a brief delay
+        // This works well for most cases (Ctrl+C exits most programs immediately)
+        inSubprocess = false
+    }
+
+    /// Call this when terminal receives output that looks like a prompt
+    func notifyPromptDetected() {
+        inSubprocess = false
     }
 }

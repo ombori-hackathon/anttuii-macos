@@ -47,13 +47,24 @@ struct TerminalContent: View {
                         appState.updateTabInput(tab.id, input: newValue)
                     }
                 ),
+                inSubprocess: Binding(
+                    get: { tab.inSubprocess },
+                    set: { newValue in
+                        appState.updateTabSubprocess(tab.id, inSubprocess: newValue)
+                    }
+                ),
                 completionVisible: appState.completionManager.isVisible,
                 onInputChanged: { newInput in
                     appState.updateTabInput(tab.id, input: newInput)
-                    appState.completionManager.requestCompletions(
-                        input: newInput,
-                        cwd: tab.workingDirectory.path
-                    )
+                    // Only request completions when not in subprocess (nano, vim, etc.)
+                    if !tab.inSubprocess {
+                        appState.completionManager.requestCompletions(
+                            input: newInput,
+                            cwd: tab.workingDirectory.path
+                        )
+                    } else {
+                        appState.completionManager.dismiss()
+                    }
                 },
                 onDirectoryChanged: { newDir in
                     appState.updateTabDirectory(tab.id, directory: newDir)

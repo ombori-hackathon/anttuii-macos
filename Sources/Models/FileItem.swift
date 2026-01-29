@@ -68,11 +68,15 @@ class FileSystemService: ObservableObject {
     @Published var rootItems: [FileItem] = []
     @Published var currentDirectory: URL = FileManager.default.homeDirectoryForCurrentUser
     @Published var expandedPaths: Set<String> = []
+    @Published var gitBranch: String? = nil
+    @Published var isGitRepo: Bool = false
 
     private let fileManager = FileManager.default
+    private var gitStatusCache: [String: FileItem.GitStatus] = [:]
 
     func loadDirectory(_ url: URL) {
         currentDirectory = url
+        refreshGitStatus()
         rootItems = loadContents(of: url)
     }
 
@@ -86,7 +90,16 @@ class FileSystemService: ObservableObject {
 
             return contents
                 .filter { !$0.lastPathComponent.hasPrefix(".") } // Hide dotfiles by default
-                .map { FileItem(url: $0) }
+                .map { url in
+                    var item = FileItem(url: url)
+                    // Apply git status from cache
+                    if let status = gitStatusCache[url.path] {
+                        item.gitStatus = status
+                    } else if let status = gitStatusForPath(url.path) {
+                        item.gitStatus = status
+                    }
+                    return item
+                }
                 .sorted { item1, item2 in
                     // Directories first, then alphabetically
                     if item1.isDirectory != item2.isDirectory {
@@ -114,5 +127,136 @@ class FileSystemService: ObservableObject {
     func childrenFor(_ item: FileItem) -> [FileItem]? {
         guard item.isDirectory, isExpanded(item) else { return nil }
         return loadContents(of: item.path)
+    }
+
+    // MARK: - Git Integration
+
+    func refreshGitStatus() {
+        gitStatusCache.removeAll()
+
+        // Check if we're in a git repo
+        let gitDir = findGitRoot(from: currentDirectory)
+        isGitRepo = gitDir != nil
+
+        guard isGitRepo else {
+            gitBranch = nil
+            return
+        }
+
+        // Get current branch
+        gitBranch = getGitBranch()
+
+        // Get file statuses
+        loadGitFileStatuses()
+    }
+
+    private func findGitRoot(from url: URL) -> URL? {
+        var current = url
+        while current.path != "/" {
+            let gitPath = current.appendingPathComponent(".git")
+            if fileManager.fileExists(atPath: gitPath.path) {
+                return current
+            }
+            current = current.deletingLastPathComponent()
+        }
+        return nil
+    }
+
+    private func getGitBranch() -> String? {
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+        task.arguments = ["branch", "--show-current"]
+        task.currentDirectoryURL = currentDirectory
+
+        let pipe = Pipe()
+        task.standardOutput = pipe
+        task.standardError = FileHandle.nullDevice
+
+        do {
+            try task.run()
+            task.waitUntilExit()
+
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            if let output = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !output.isEmpty {
+                return output
+            }
+        } catch {
+            // Ignore errors
+        }
+        return nil
+    }
+
+    private func loadGitFileStatuses() {
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+        task.arguments = ["status", "--porcelain", "-uall"]
+        task.currentDirectoryURL = currentDirectory
+
+        let pipe = Pipe()
+        task.standardOutput = pipe
+        task.standardError = FileHandle.nullDevice
+
+        do {
+            try task.run()
+            task.waitUntilExit()
+
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            if let output = String(data: data, encoding: .utf8) {
+                parseGitStatus(output)
+            }
+        } catch {
+            // Ignore errors
+        }
+    }
+
+    private func parseGitStatus(_ output: String) {
+        // Git status --porcelain format:
+        // XY filename
+        // X = status in staging area, Y = status in working tree
+        // M = modified, A = added, D = deleted, ? = untracked, ! = ignored
+
+        guard let gitRoot = findGitRoot(from: currentDirectory) else { return }
+
+        for line in output.split(separator: "\n") {
+            guard line.count >= 3 else { continue }
+
+            let statusChars = line.prefix(2)
+            let filename = String(line.dropFirst(3))
+
+            let fullPath = gitRoot.appendingPathComponent(filename).path
+
+            let status: FileItem.GitStatus
+            if statusChars.contains("?") {
+                status = .untracked
+            } else if statusChars.contains("A") {
+                status = .added
+            } else if statusChars.contains("D") {
+                status = .deleted
+            } else if statusChars.contains("M") || statusChars.contains("m") {
+                status = .modified
+            } else if statusChars.contains("!") {
+                status = .ignored
+            } else {
+                status = .none
+            }
+
+            gitStatusCache[fullPath] = status
+
+            // Also mark parent directories as modified if they contain modified files
+            if status != .none && status != .ignored {
+                var parent = URL(fileURLWithPath: fullPath).deletingLastPathComponent()
+                while parent.path != gitRoot.path && parent.path != "/" {
+                    if gitStatusCache[parent.path] == nil {
+                        gitStatusCache[parent.path] = .modified
+                    }
+                    parent = parent.deletingLastPathComponent()
+                }
+            }
+        }
+    }
+
+    private func gitStatusForPath(_ path: String) -> FileItem.GitStatus? {
+        return gitStatusCache[path]
     }
 }
