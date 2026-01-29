@@ -2,7 +2,7 @@ import SwiftUI
 
 // Shared colors
 private let contentBgColor = Color(nsColor: NSColor(red: 30/255, green: 30/255, blue: 30/255, alpha: 1.0))
-private let contentPadding: CGFloat = 8
+private let contentPadding: CGFloat = 12
 
 struct MainContentView: View {
     @Bindable var appState: AppState

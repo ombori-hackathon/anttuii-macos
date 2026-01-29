@@ -180,9 +180,26 @@ class AppsService: ObservableObject {
         var foundApps: [AppItem] = []
         var seenNames = Set<String>()
 
+        // Build category lookup from common commands
+        var categoryLookup: [String: AppItem.Category] = [:]
+        for (name, category) in commonCommands {
+            categoryLookup[name] = category
+        }
+
         // First, add common commands that exist
         for (name, category) in commonCommands {
             if let path = findCommand(name), !seenNames.contains(name) {
+                foundApps.append(AppItem(name: name, path: path, category: category))
+                seenNames.insert(name)
+            }
+        }
+
+        // Add Homebrew formulae (CLI tools only, not casks)
+        let brewFormulae = getBrewFormulae()
+        for name in brewFormulae {
+            guard !seenNames.contains(name) else { continue }
+            if let path = findCommand(name) {
+                let category = categoryLookup[name] ?? .other
                 foundApps.append(AppItem(name: name, path: path, category: category))
                 seenNames.insert(name)
             }
@@ -200,6 +217,39 @@ class AppsService: ObservableObject {
         }
 
         isLoading = false
+    }
+
+    private func getBrewFormulae() -> [String] {
+        // Try to find brew
+        let brewPaths = ["/opt/homebrew/bin/brew", "/usr/local/bin/brew"]
+        guard let brewPath = brewPaths.first(where: { FileManager.default.isExecutableFile(atPath: $0) }) else {
+            return []
+        }
+
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: brewPath)
+        task.arguments = ["list", "--formula", "-1"]
+
+        let pipe = Pipe()
+        task.standardOutput = pipe
+        task.standardError = FileHandle.nullDevice
+
+        do {
+            try task.run()
+            task.waitUntilExit()
+
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            if let output = String(data: data, encoding: .utf8) {
+                return output
+                    .split(separator: "\n")
+                    .map(String.init)
+                    .filter { !$0.isEmpty }
+            }
+        } catch {
+            // Ignore errors
+        }
+
+        return []
     }
 
     private func findCommand(_ name: String) -> String? {

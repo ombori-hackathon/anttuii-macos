@@ -73,6 +73,13 @@ struct SidebarView: View {
 
             // Action menu overlay (files only)
             if showActionMenu, let item = selectedFileItem {
+                // Dismiss overlay - clicking outside closes the menu
+                Color.black.opacity(0.01)
+                    .ignoresSafeArea()
+                    .onTapGesture {
+                        showActionMenu = false
+                    }
+
                 VStack {
                     Spacer()
                     FileActionMenu(
@@ -299,9 +306,7 @@ struct SidebarView: View {
             )
             .onTapGesture {
                 selectedIndex = adjustedIndex
-                if item.isDirectory {
-                    activateItem(item)
-                }
+                activateItem(item)
             }
             .onRightClick {
                 selectedIndex = adjustedIndex
