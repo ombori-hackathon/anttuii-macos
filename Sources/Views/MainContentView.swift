@@ -1,8 +1,9 @@
 import SwiftUI
 
-// Shared colors
+// Shared colors - match terminal background
 private let contentBgColor = Color(nsColor: NSColor(red: 30/255, green: 30/255, blue: 30/255, alpha: 1.0))
-private let contentPadding: CGFloat = 12
+private let contentPadding: CGFloat = 16
+private let contentSpacing: CGFloat = 8
 
 struct MainContentView: View {
     @Bindable var appState: AppState
@@ -13,33 +14,26 @@ struct MainContentView: View {
             TabBar(appState: appState)
 
             // Main content area with optional sidebar
-            HStack(spacing: 0) {
+            HStack(spacing: contentSpacing) {
                 // Sidebar with padding
                 if appState.sidebarVisible {
                     SidebarView(appState: appState)
-                        .padding(.leading, contentPadding)
-                        .padding(.vertical, contentPadding)
-                        .frame(width: 280 + contentPadding)
-                        .background(contentBgColor)
+                        .frame(width: 280)
                         .transition(.move(edge: .leading))
                 }
 
-                // Terminal content for active tab with padding
+                // Terminal content for active tab
                 if let activeTab = appState.activeTab {
                     TerminalContent(
                         appState: appState,
                         tab: activeTab
                     )
-                    .padding(.trailing, contentPadding)
-                    .padding(.vertical, contentPadding)
-                    .padding(.leading, appState.sidebarVisible ? 0 : contentPadding)
-                    .background(contentBgColor)
                 } else {
                     Text("No active terminal")
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .background(contentBgColor)
                 }
             }
+            .padding(contentPadding)
             .background(contentBgColor)
         }
         .background(contentBgColor)

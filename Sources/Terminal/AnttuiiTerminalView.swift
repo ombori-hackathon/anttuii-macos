@@ -161,8 +161,8 @@ class AnttuiiTerminalView: LocalProcessTerminalView {
         }
         font = terminalFont
 
-        // Semi-transparent dark background
-        let bgColor = NSColor(red: 30/255, green: 30/255, blue: 30/255, alpha: 0.95)
+        // Dark background - match the content padding area
+        let bgColor = NSColor(red: 30/255, green: 30/255, blue: 30/255, alpha: 1.0)
         nativeBackgroundColor = bgColor
         nativeForegroundColor = NSColor.white
 

@@ -4,7 +4,7 @@ import AppKit
 // MARK: - Constants
 private let tuiFontSize: CGFloat = 13  // Match terminal font size
 private let tuiLineHeight: CGFloat = 20
-private let tuiBgColor = Color(nsColor: NSColor(red: 30/255, green: 30/255, blue: 30/255, alpha: 0.95))
+private let tuiBgColor = Color(nsColor: NSColor(red: 38/255, green: 38/255, blue: 40/255, alpha: 1.0))
 private let tuiBorderColor = Color(white: 0.4)
 private let tuiDimColor = Color(white: 0.5)
 private let tuiSelectedBg = Color(nsColor: NSColor(red: 40/255, green: 80/255, blue: 120/255, alpha: 1.0))
@@ -56,19 +56,18 @@ struct SidebarView: View {
         ZStack {
             VStack(spacing: 0) {
                 tabBar
-                TUIBoxSeparator()
+                Divider().background(tuiBorderColor.opacity(0.3))
                 if selectedTab == .files {
                     filesHeaderSection
-                    TUIBoxSeparator()
+                    Divider().background(tuiBorderColor.opacity(0.3))
                     fileListSection
-                    TUIBoxSeparator()
+                    Divider().background(tuiBorderColor.opacity(0.3))
                     filesStatusSection
                 } else {
                     appsListSection
-                    TUIBoxSeparator()
+                    Divider().background(tuiBorderColor.opacity(0.3))
                     appsStatusSection
                 }
-                TUIBoxBottom()
             }
 
             // Action menu overlay (files only)
@@ -185,35 +184,25 @@ struct SidebarView: View {
     // MARK: - Tab Bar
 
     private var tabBar: some View {
-        HStack(spacing: 0) {
-            Text("┌")
-                .foregroundColor(isActive ? .cyan : tuiBorderColor)
+        HStack(spacing: 16) {
             ForEach(SidebarTab.allCases, id: \.self) { tab in
                 tabButton(for: tab)
             }
-            GeometryReader { geo in
-                Text(String(repeating: "─", count: max(0, Int(geo.size.width / 8))))
-                    .foregroundColor(isActive ? .cyan : tuiBorderColor)
-            }
-            Text("┐")
-                .foregroundColor(isActive ? .cyan : tuiBorderColor)
+            Spacer()
         }
-        .frame(height: tuiLineHeight)
+        .padding(.horizontal, 12)
+        .frame(height: tuiLineHeight + 4)
         .background(tuiBgColor)
     }
 
     private func tabButton(for tab: SidebarTab) -> some View {
         let isSelected = selectedTab == tab
-        return HStack(spacing: 0) {
-            Text("─")
-                .foregroundColor(isActive ? .cyan : tuiBorderColor)
+        return HStack(spacing: 4) {
             Text("[\(tab.shortcut)]")
                 .foregroundColor(isSelected ? .yellow : tuiDimColor)
             Text(tab.rawValue)
                 .foregroundColor(isSelected ? (isActive ? .cyan : .white) : tuiDimColor)
                 .fontWeight(isSelected ? .bold : .regular)
-            Text("─")
-                .foregroundColor(isActive ? .cyan : tuiBorderColor)
         }
         .onTapGesture {
             selectedTab = tab
@@ -232,27 +221,23 @@ struct SidebarView: View {
     }
 
     private var pathBar: some View {
-        HStack(spacing: 0) {
-            Text("│ ~/")
-                .foregroundColor(tuiBorderColor)
+        HStack(spacing: 4) {
+            Text("~/")
+                .foregroundColor(tuiDimColor)
             Text(currentPathDisplay)
                 .foregroundColor(.white)
                 .lineLimit(1)
             Spacer(minLength: 0)
-            Text(" │")
-                .foregroundColor(tuiBorderColor)
         }
+        .padding(.horizontal, 12)
         .frame(height: tuiLineHeight)
         .background(tuiBgColor)
     }
 
     private var gitBranchBar: some View {
-        HStack(spacing: 0) {
-            Text("│ ")
-                .foregroundColor(tuiBorderColor)
+        HStack(spacing: 4) {
             Text("")
                 .foregroundColor(.orange)
-            Text(" ")
             if let branch = fileService.gitBranch {
                 Text(branch)
                     .foregroundColor(.green)
@@ -261,9 +246,8 @@ struct SidebarView: View {
                     .foregroundColor(.red)
             }
             Spacer(minLength: 0)
-            Text(" │")
-                .foregroundColor(tuiBorderColor)
         }
+        .padding(.horizontal, 12)
         .frame(height: tuiLineHeight)
         .background(tuiBgColor)
     }
@@ -313,27 +297,24 @@ struct SidebarView: View {
     }
 
     private var filesStatusSection: some View {
-        HStack(spacing: 0) {
-            Text("│ ")
-                .foregroundColor(tuiBorderColor)
+        HStack(spacing: 4) {
             Text("\(fileService.rootItems.count)")
                 .foregroundColor(.yellow)
-            Text(" items")
+            Text("items")
                 .foregroundColor(tuiDimColor)
             Spacer(minLength: 0)
             Text("a")
                 .foregroundColor(.cyan)
-            Text(":actions ")
+            Text(":actions")
                 .foregroundColor(tuiDimColor)
             if fileService.isGitRepo {
                 Text("r")
                     .foregroundColor(.cyan)
-                Text(":refresh ")
+                Text(":refresh")
                     .foregroundColor(tuiDimColor)
             }
-            Text("│")
-                .foregroundColor(tuiBorderColor)
         }
+        .padding(.horizontal, 12)
         .frame(height: tuiLineHeight)
         .background(tuiBgColor)
     }
@@ -344,15 +325,12 @@ struct SidebarView: View {
         ScrollView(.vertical, showsIndicators: false) {
             LazyVStack(spacing: 0) {
                 if appsService.isLoading {
-                    HStack(spacing: 0) {
-                        Text("│ ")
-                            .foregroundColor(tuiBorderColor)
+                    HStack {
                         Text("Loading...")
                             .foregroundColor(tuiDimColor)
-                        Spacer(minLength: 0)
-                        Text(" │")
-                            .foregroundColor(tuiBorderColor)
+                        Spacer()
                     }
+                    .padding(.horizontal, 12)
                     .frame(height: tuiLineHeight)
                 } else {
                     appRows
@@ -376,25 +354,22 @@ struct SidebarView: View {
     }
 
     private var appsStatusSection: some View {
-        HStack(spacing: 0) {
-            Text("│ ")
-                .foregroundColor(tuiBorderColor)
+        HStack(spacing: 4) {
             Text("\(appsService.apps.count)")
                 .foregroundColor(.yellow)
-            Text(" commands")
+            Text("commands")
                 .foregroundColor(tuiDimColor)
             Spacer(minLength: 0)
             Text("⏎")
                 .foregroundColor(.cyan)
-            Text(":insert ")
+            Text(":insert")
                 .foregroundColor(tuiDimColor)
             Text("r")
                 .foregroundColor(.cyan)
-            Text(":refresh ")
+            Text(":refresh")
                 .foregroundColor(tuiDimColor)
-            Text("│")
-                .foregroundColor(tuiBorderColor)
         }
+        .padding(.horizontal, 12)
         .frame(height: tuiLineHeight)
         .background(tuiBgColor)
     }
@@ -580,21 +555,18 @@ struct TUIAppLine: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            Text("│ ")
-                .foregroundColor(tuiBorderColor)
             Text(isSelected ? ">" : " ")
                 .foregroundColor(.yellow)
+                .frame(width: 14)
             Text(app.category.icon)
                 .foregroundColor(categoryColor)
-                .frame(width: 14, alignment: .leading)
-            Text(" ")
+                .frame(width: 16, alignment: .leading)
             Text(app.name)
                 .foregroundColor(isSelected ? .white : categoryColor)
                 .lineLimit(1)
             Spacer(minLength: 0)
-            Text(" │")
-                .foregroundColor(tuiBorderColor)
         }
+        .padding(.horizontal, 8)
         .font(.system(size: tuiFontSize, design: .monospaced))
         .frame(height: tuiLineHeight - 2)
         .background(isSelected ? tuiSelectedBg : tuiBgColor)
@@ -614,73 +586,6 @@ struct TUIAppLine: View {
     }
 }
 
-// MARK: - TUI Box Drawing Components
-
-struct TUIBoxTop: View {
-    let title: String
-    var isActive: Bool = false
-
-    private var borderColor: Color {
-        isActive ? .cyan : tuiBorderColor
-    }
-
-    var body: some View {
-        HStack(spacing: 0) {
-            Text("┌─ ")
-                .foregroundColor(borderColor)
-            Text(title)
-                .foregroundColor(isActive ? .cyan : .white)
-                .fontWeight(.bold)
-            Text(" ")
-            GeometryReader { geo in
-                Text(String(repeating: "─", count: max(0, Int(geo.size.width / 8))))
-                    .foregroundColor(borderColor)
-            }
-            Text("┐")
-                .foregroundColor(borderColor)
-        }
-        .font(.system(size: tuiFontSize, design: .monospaced))
-        .frame(height: tuiLineHeight)
-        .background(tuiBgColor)
-    }
-}
-
-struct TUIBoxBottom: View {
-    var body: some View {
-        HStack(spacing: 0) {
-            Text("└")
-                .foregroundColor(tuiBorderColor)
-            GeometryReader { geo in
-                Text(String(repeating: "─", count: max(0, Int(geo.size.width / 8))))
-                    .foregroundColor(tuiBorderColor)
-            }
-            Text("┘")
-                .foregroundColor(tuiBorderColor)
-        }
-        .font(.system(size: tuiFontSize, design: .monospaced))
-        .frame(height: tuiLineHeight)
-        .background(tuiBgColor)
-    }
-}
-
-struct TUIBoxSeparator: View {
-    var body: some View {
-        HStack(spacing: 0) {
-            Text("├")
-                .foregroundColor(tuiBorderColor)
-            GeometryReader { geo in
-                Text(String(repeating: "─", count: max(0, Int(geo.size.width / 8))))
-                    .foregroundColor(tuiBorderColor)
-            }
-            Text("┤")
-                .foregroundColor(tuiBorderColor)
-        }
-        .font(.system(size: tuiFontSize, design: .monospaced))
-        .frame(height: tuiLineHeight)
-        .background(tuiBgColor)
-    }
-}
-
 struct TUIFileLine: View {
     let icon: String
     let name: String
@@ -691,15 +596,14 @@ struct TUIFileLine: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            Text("│ ")
-                .foregroundColor(tuiBorderColor)
             Text(isSelected ? ">" : " ")
                 .foregroundColor(.yellow)
+                .frame(width: 14)
 
             // Git status indicator
             Text(gitStatus.icon)
                 .foregroundColor(gitStatusColor)
-                .frame(width: 12, alignment: .leading)
+                .frame(width: 14, alignment: .leading)
 
             Text(icon)
                 .foregroundColor(iconColor)
@@ -707,9 +611,8 @@ struct TUIFileLine: View {
                 .foregroundColor(isDirectory ? iconColor : nameColor)
                 .lineLimit(1)
             Spacer(minLength: 0)
-            Text(" │")
-                .foregroundColor(tuiBorderColor)
         }
+        .padding(.horizontal, 8)
         .font(.system(size: tuiFontSize, design: .monospaced))
         .frame(height: tuiLineHeight - 2)
         .background(isSelected ? tuiSelectedBg : tuiBgColor)
