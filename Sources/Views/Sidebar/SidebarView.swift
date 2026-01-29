@@ -9,14 +9,29 @@ private let tuiBorderColor = Color(white: 0.4)
 private let tuiDimColor = Color(white: 0.5)
 private let tuiSelectedBg = Color(nsColor: NSColor(red: 40/255, green: 80/255, blue: 120/255, alpha: 1.0))
 
-/// TUI-style sidebar that looks like a terminal file manager (ranger/mc style)
+// MARK: - Sidebar Tab
+enum SidebarTab: String, CaseIterable {
+    case files = "FILES"
+    case apps = "APPS"
+
+    var shortcut: String {
+        switch self {
+        case .files: return "1"
+        case .apps: return "2"
+        }
+    }
+}
+
+/// TUI-style sidebar with tabs for files and apps
 struct SidebarView: View {
     @Bindable var appState: AppState
     @StateObject private var fileService = FileSystemService()
+    @StateObject private var appsService = AppsService()
+    @State private var selectedTab: SidebarTab = .files
     @State private var selectedIndex: Int = 0
     @FocusState private var isFocused: Bool
 
-    // Action menu state
+    // Action menu state (files only)
     @State private var showActionMenu: Bool = false
     @State private var actionMenuSelectedIndex: Int = 0
 
@@ -24,25 +39,40 @@ struct SidebarView: View {
         appState.focusedPane == .sidebar
     }
 
-    private var selectedItem: FileItem? {
+    private var selectedFileItem: FileItem? {
+        guard selectedTab == .files else { return nil }
         let itemIndex = selectedIndex - (hasParent ? 1 : 0)
         guard itemIndex >= 0 && itemIndex < fileService.rootItems.count else { return nil }
         return fileService.rootItems[itemIndex]
     }
 
+    private var selectedAppItem: AppItem? {
+        guard selectedTab == .apps else { return nil }
+        guard selectedIndex >= 0 && selectedIndex < appsService.apps.count else { return nil }
+        return appsService.apps[selectedIndex]
+    }
+
     var body: some View {
         ZStack {
             VStack(spacing: 0) {
-                headerSection
+                tabBar
                 TUIBoxSeparator()
-                fileListSection
-                TUIBoxSeparator()
-                statusSection
+                if selectedTab == .files {
+                    filesHeaderSection
+                    TUIBoxSeparator()
+                    fileListSection
+                    TUIBoxSeparator()
+                    filesStatusSection
+                } else {
+                    appsListSection
+                    TUIBoxSeparator()
+                    appsStatusSection
+                }
                 TUIBoxBottom()
             }
 
-            // Action menu overlay
-            if showActionMenu, let item = selectedItem {
+            // Action menu overlay (files only)
+            if showActionMenu, let item = selectedFileItem {
                 VStack {
                     Spacer()
                     FileActionMenu(
@@ -64,15 +94,23 @@ struct SidebarView: View {
         .background(tuiBgColor)
         .focusable()
         .focused($isFocused)
-        .onAppear { loadCurrentDirectory() }
+        .onAppear {
+            loadCurrentDirectory()
+            appsService.loadApps()
+        }
         .onChange(of: appState.activeTab?.workingDirectory) { _, newDir in
             if let dir = newDir {
                 fileService.loadDirectory(dir)
-                selectedIndex = 0
+                if selectedTab == .files {
+                    selectedIndex = 0
+                }
             }
         }
         .onChange(of: appState.focusedPane) { _, newPane in
             isFocused = (newPane == .sidebar)
+        }
+        .onChange(of: selectedTab) { _, _ in
+            selectedIndex = 0
         }
         .onTapGesture {
             appState.focusedPane = .sidebar
@@ -92,9 +130,26 @@ struct SidebarView: View {
             activateSelected()
             return .handled
         }
+        .onKeyPress(.tab) {
+            guard !showActionMenu else { return .ignored }
+            switchTab()
+            return .handled
+        }
+        .onKeyPress("1") {
+            guard !showActionMenu else { return .ignored }
+            selectedTab = .files
+            return .handled
+        }
+        .onKeyPress("2") {
+            guard !showActionMenu else { return .ignored }
+            selectedTab = .apps
+            return .handled
+        }
         .onKeyPress("a") {
             guard !showActionMenu else { return .ignored }
-            showActionMenuForSelected()
+            if selectedTab == .files {
+                showActionMenuForSelected()
+            }
             return .handled
         }
         .onKeyPress("g") {
@@ -104,7 +159,11 @@ struct SidebarView: View {
         }
         .onKeyPress("r") {
             guard !showActionMenu else { return .ignored }
-            fileService.refreshGitStatus()
+            if selectedTab == .files {
+                fileService.refreshGitStatus()
+            } else {
+                appsService.loadApps()
+            }
             return .handled
         }
         .onKeyPress(.escape) {
@@ -116,11 +175,48 @@ struct SidebarView: View {
         }
     }
 
-    // MARK: - View Components
+    // MARK: - Tab Bar
 
-    private var headerSection: some View {
+    private var tabBar: some View {
+        HStack(spacing: 0) {
+            Text("┌")
+                .foregroundColor(isActive ? .cyan : tuiBorderColor)
+            ForEach(SidebarTab.allCases, id: \.self) { tab in
+                tabButton(for: tab)
+            }
+            GeometryReader { geo in
+                Text(String(repeating: "─", count: max(0, Int(geo.size.width / 8))))
+                    .foregroundColor(isActive ? .cyan : tuiBorderColor)
+            }
+            Text("┐")
+                .foregroundColor(isActive ? .cyan : tuiBorderColor)
+        }
+        .frame(height: tuiLineHeight)
+        .background(tuiBgColor)
+    }
+
+    private func tabButton(for tab: SidebarTab) -> some View {
+        let isSelected = selectedTab == tab
+        return HStack(spacing: 0) {
+            Text("─")
+                .foregroundColor(isActive ? .cyan : tuiBorderColor)
+            Text("[\(tab.shortcut)]")
+                .foregroundColor(isSelected ? .yellow : tuiDimColor)
+            Text(tab.rawValue)
+                .foregroundColor(isSelected ? (isActive ? .cyan : .white) : tuiDimColor)
+                .fontWeight(isSelected ? .bold : .regular)
+            Text("─")
+                .foregroundColor(isActive ? .cyan : tuiBorderColor)
+        }
+        .onTapGesture {
+            selectedTab = tab
+        }
+    }
+
+    // MARK: - Files Tab Components
+
+    private var filesHeaderSection: some View {
         VStack(spacing: 0) {
-            TUIBoxTop(title: "FILES", isActive: isActive)
             pathBar
             if fileService.isGitRepo {
                 gitBranchBar
@@ -210,7 +306,7 @@ struct SidebarView: View {
         }
     }
 
-    private var statusSection: some View {
+    private var filesStatusSection: some View {
         HStack(spacing: 0) {
             Text("│ ")
                 .foregroundColor(tuiBorderColor)
@@ -236,6 +332,67 @@ struct SidebarView: View {
         .background(tuiBgColor)
     }
 
+    // MARK: - Apps Tab Components
+
+    private var appsListSection: some View {
+        ScrollView(.vertical, showsIndicators: false) {
+            LazyVStack(spacing: 0) {
+                if appsService.isLoading {
+                    HStack(spacing: 0) {
+                        Text("│ ")
+                            .foregroundColor(tuiBorderColor)
+                        Text("Loading...")
+                            .foregroundColor(tuiDimColor)
+                        Spacer(minLength: 0)
+                        Text(" │")
+                            .foregroundColor(tuiBorderColor)
+                    }
+                    .frame(height: tuiLineHeight)
+                } else {
+                    appRows
+                }
+            }
+        }
+        .background(tuiBgColor)
+    }
+
+    private var appRows: some View {
+        ForEach(Array(appsService.apps.enumerated()), id: \.element.id) { index, app in
+            TUIAppLine(
+                app: app,
+                isSelected: selectedIndex == index
+            )
+            .onTapGesture {
+                selectedIndex = index
+                insertAppCommand(app)
+            }
+        }
+    }
+
+    private var appsStatusSection: some View {
+        HStack(spacing: 0) {
+            Text("│ ")
+                .foregroundColor(tuiBorderColor)
+            Text("\(appsService.apps.count)")
+                .foregroundColor(.yellow)
+            Text(" commands")
+                .foregroundColor(tuiDimColor)
+            Spacer(minLength: 0)
+            Text("⏎")
+                .foregroundColor(.cyan)
+            Text(":insert ")
+                .foregroundColor(tuiDimColor)
+            Text("r")
+                .foregroundColor(.cyan)
+            Text(":refresh ")
+                .foregroundColor(tuiDimColor)
+            Text("│")
+                .foregroundColor(tuiBorderColor)
+        }
+        .frame(height: tuiLineHeight)
+        .background(tuiBgColor)
+    }
+
     // MARK: - Computed Properties
 
     private var currentPathDisplay: String {
@@ -251,8 +408,13 @@ struct SidebarView: View {
         fileService.currentDirectory.path != "/"
     }
 
-    private var totalItems: Int {
-        fileService.rootItems.count + (hasParent ? 1 : 0)
+    private var totalItemsForCurrentTab: Int {
+        switch selectedTab {
+        case .files:
+            return fileService.rootItems.count + (hasParent ? 1 : 0)
+        case .apps:
+            return appsService.apps.count
+        }
     }
 
     // MARK: - Actions
@@ -263,14 +425,31 @@ struct SidebarView: View {
         }
     }
 
+    private func switchTab() {
+        let allTabs = SidebarTab.allCases
+        if let currentIndex = allTabs.firstIndex(of: selectedTab) {
+            let nextIndex = (currentIndex + 1) % allTabs.count
+            selectedTab = allTabs[nextIndex]
+        }
+    }
+
     private func moveSelection(by delta: Int) {
         let newIndex = selectedIndex + delta
-        if newIndex >= 0 && newIndex < totalItems {
+        if newIndex >= 0 && newIndex < totalItemsForCurrentTab {
             selectedIndex = newIndex
         }
     }
 
     private func activateSelected() {
+        switch selectedTab {
+        case .files:
+            activateSelectedFile()
+        case .apps:
+            activateSelectedApp()
+        }
+    }
+
+    private func activateSelectedFile() {
         if selectedIndex == 0 && hasParent {
             navigateToParent()
         } else {
@@ -279,6 +458,11 @@ struct SidebarView: View {
                 activateItem(fileService.rootItems[itemIndex])
             }
         }
+    }
+
+    private func activateSelectedApp() {
+        guard let app = selectedAppItem else { return }
+        insertAppCommand(app)
     }
 
     private func activateItem(_ item: FileItem) {
@@ -302,6 +486,18 @@ struct SidebarView: View {
         }
     }
 
+    private func insertAppCommand(_ app: AppItem) {
+        let command = appsService.commandForApp(app)
+
+        NotificationCenter.default.post(
+            name: .terminalInsertCommand,
+            object: nil,
+            userInfo: ["command": command]
+        )
+
+        appState.focusedPane = .terminal
+    }
+
     private func colorForItem(_ item: FileItem) -> Color {
         // Git status takes priority for coloring
         switch item.gitStatus {
@@ -322,60 +518,93 @@ struct SidebarView: View {
         }
     }
 
-    // MARK: - Action Menu
+    // MARK: - Action Menu (Files)
 
     private func showActionMenuForSelected() {
-        // Only show menu for actual files/directories, not parent (..)
-        guard selectedItem != nil else { return }
+        guard selectedFileItem != nil else { return }
         actionMenuSelectedIndex = 0
         showActionMenu = true
     }
 
     private func handleFileAction(_ action: FileAction, for item: FileItem) {
-        // Handle preview action specially
         if action.isPreviewAction {
             appState.showPreview(for: item, gitStatus: item.gitStatus)
             return
         }
 
-        // Handle paste action - completes a pending copy and clears the state
         if action.isPasteAction {
             guard let destinationPath = action.command(for: item, in: fileService.currentDirectory) else {
                 return
             }
 
-            // Append destination path to complete the cp command
             NotificationCenter.default.post(
                 name: .terminalAppendText,
                 object: nil,
                 userInfo: ["text": destinationPath]
             )
 
-            // Clear the pending copy state
             appState.clearCopyPending()
             appState.focusedPane = .terminal
             return
         }
 
         guard let command = action.command(for: item, in: fileService.currentDirectory) else {
-            // Some actions like copyPath handle themselves
             return
         }
 
-        // Track if this is a copy action - set pending state
         if action == .copy {
             appState.setCopyPending()
         }
 
-        // Send command to terminal via notification
         NotificationCenter.default.post(
             name: .terminalInsertCommand,
             object: nil,
             userInfo: ["command": command]
         )
 
-        // Switch focus to terminal so user can complete the command
         appState.focusedPane = .terminal
+    }
+}
+
+// MARK: - TUI App Line
+
+struct TUIAppLine: View {
+    let app: AppItem
+    let isSelected: Bool
+
+    var body: some View {
+        HStack(spacing: 0) {
+            Text("│ ")
+                .foregroundColor(tuiBorderColor)
+            Text(isSelected ? ">" : " ")
+                .foregroundColor(.yellow)
+            Text(app.category.icon)
+                .foregroundColor(categoryColor)
+                .frame(width: 14, alignment: .leading)
+            Text(" ")
+            Text(app.name)
+                .foregroundColor(isSelected ? .white : categoryColor)
+                .lineLimit(1)
+            Spacer(minLength: 0)
+            Text(" │")
+                .foregroundColor(tuiBorderColor)
+        }
+        .font(.system(size: tuiFontSize, design: .monospaced))
+        .frame(height: tuiLineHeight - 2)
+        .background(isSelected ? tuiSelectedBg : tuiBgColor)
+        .contentShape(Rectangle())
+    }
+
+    private var categoryColor: Color {
+        switch app.category {
+        case .common: return .yellow
+        case .git: return .orange
+        case .development: return .cyan
+        case .system: return .red
+        case .network: return .green
+        case .files: return .blue
+        case .other: return .white
+        }
     }
 }
 
